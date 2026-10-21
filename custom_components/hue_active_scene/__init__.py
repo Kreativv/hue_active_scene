@@ -113,57 +113,36 @@ async def async_setup_entry(
         raise ConfigEntryNotReady("No loaded Philips Hue V2 config entries found")
 
     entry.runtime_data = bridges
-    _async_adopt_hue_devices(hass, entry, bridges)
+    _async_remove_shadow_devices(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
 @callback
-def _async_adopt_hue_devices(
-    hass: HomeAssistant, entry: HueActiveSceneConfigEntry, bridges: list[TrackedBridge]
-) -> None:
-    """Share core Hue's room/zone devices so our sensors can sit on them.
-
-    The device registry keys identifiers per config entry, so passing
-    `DeviceInfo` only ever matches a device this entry already owns — asking
-    for core Hue's room by identifier silently produced a nameless duplicate
-    instead. Linking this entry to the real device is the supported way in,
-    and it leaves core Hue owning the device.
-    """
-    _async_remove_shadow_devices(hass, entry, bridges)
-
-    dev_reg = dr.async_get(hass)
-    for bridge in bridges:
-        for group in [*bridge.api.groups.room, *bridge.api.groups.zone]:
-            device = dev_reg.async_get_device_by_identifier(
-                (HUE_DOMAIN, group.id), bridge.entry_id
-            )
-            if device is not None and entry.entry_id not in device.config_entries:
-                dev_reg.async_update_device(
-                    device.id, add_config_entry_id=entry.entry_id
-                )
-
-
-@callback
 def _async_remove_shadow_devices(
-    hass: HomeAssistant, entry: HueActiveSceneConfigEntry, bridges: list[TrackedBridge]
+    hass: HomeAssistant, entry: HueActiveSceneConfigEntry
 ) -> None:
     """Drop the nameless duplicate devices earlier versions created.
+
+    Since Home Assistant 2026.8 a device belongs to a single config entry, so
+    our sensors no longer share core Hue's room/zone devices: each entity links
+    itself to that device (`device_entry`) and core Hue keeps sole ownership.
+    If the registry migration split a formerly shared room device, a copy
+    left owned by this entry is dropped here as well.
 
     Their entities are detached first: removing a device takes its entities
     with it, which would discard entity ids, renames and area assignments.
     """
     dev_reg = dr.async_get(hass)
     ent_reg = er.async_get(hass)
-    hue_entry_ids = {bridge.entry_id for bridge in bridges}
 
     for device in dr.async_entries_for_config_entry(dev_reg, entry.entry_id):
-        # Only a device this entry owns outright can be one of ours. Anything
-        # core Hue still owns lists its config entry here too, so this can
-        # never remove a real Hue device.
-        if device.config_entries != {entry.entry_id}:
-            continue
-        if device.config_entries & hue_entry_ids:
+        # Only a device this entry owns can be one of ours; core Hue's own
+        # room/zone devices belong to a Hue entry, so this can never remove a
+        # real Hue device. Since 2026.8 the lookup above already guarantees
+        # that; the check stays as a guard, read with getattr because the test
+        # harness pins a Home Assistant without `config_entry_id`.
+        if getattr(device, "config_entry_id", None) != entry.entry_id:
             continue
         if not device.identifiers or any(
             domain != HUE_DOMAIN for domain, _ in device.identifiers
