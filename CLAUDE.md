@@ -311,7 +311,9 @@ restart. Do not re-issue it.
 ## Known, and deliberately not chased
 
 - Ecovacs authentication fails upstream. Not ours; do not debug it.
-- `async_update_device(add_config_entry_id=...)` stops working in Home
-  Assistant 2027.8. It is how our sensors sit on core Hue's room devices,
-  and the replacements would move core Hue's device to our entry, which is
-  hostile. Needs a design decision, not a rename.
+- Since 0.6.1 the integration no longer calls
+  `async_update_device(add_config_entry_id=...)` or reads
+  `DeviceEntry.config_entries` (both removed in Home Assistant 2027.8 /
+  2027.10). Devices have a single config entry since 2026.8; our sensors
+  link themselves to core Hue's room/zone device via `device_entry` and core
+  Hue keeps sole ownership. Nothing is moved to our entry.
