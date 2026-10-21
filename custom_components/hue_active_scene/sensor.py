@@ -31,11 +31,14 @@ async def async_setup_entry(
     entities: list[SensorEntity] = []
 
     def hue_device(group_id: str, hue_entry_id: str) -> DeviceEntry | None:
-        """Return core Hue's device for a group, which setup has us sharing.
+        """Return core Hue's device for a group; our entities link to it.
 
         Looked up against the Hue entry so it cannot resolve to anything but
-        the real room or zone. None means no device rather than a new one:
-        a nameless device of our own is worse than none at all.
+        the real room or zone. The device stays owned by core Hue -- since
+        Home Assistant 2026.8 a device has a single config entry, and an
+        entity of another entry may still sit on it. None means no device
+        rather than a new one: a nameless device of our own is worse than
+        none at all.
         """
         return dev_reg.async_get_device_by_identifier(
             (HUE_DOMAIN, group_id), hue_entry_id
@@ -98,8 +101,8 @@ class HueActiveSceneSensor(SensorEntity):
         # Kitchen active scene".
         self._attr_name = f"{group.metadata.name} active scene"
         self._attr_unique_id = f"{entry_id}_{group.id}_active_scene"
-        # Sit on core Hue's own room/zone device, which setup shared with this
-        # entry. Assigning `device_entry` attaches to that exact device;
+        # Sit on core Hue's own room/zone device without taking any share of
+        # it. Assigning `device_entry` attaches to that exact device;
         # `DeviceInfo` would instead look the identifier up against this entry
         # and make a nameless duplicate.
         self.device_entry = device
